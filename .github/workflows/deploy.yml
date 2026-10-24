@@ -1,7 +1,7 @@
 name: validate-and-deploy
 on:
   push:
-    branches: [main]
+    branches: [master]
 permissions:
   id-token: write # lets GitHub request an OIDC token
   contents: read
