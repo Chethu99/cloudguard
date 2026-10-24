@@ -33,13 +33,6 @@ jobs:
             --output json | tee validation.json
           test "$(cat validation.json)" = "[]"
 
-      - name: Debug Bucket Secret
-        run: |
-          echo "Bucket length: ${#BUCKET}"
-          echo "Value wrapped in quotes: '${BUCKET}'"
-        env:
-          BUCKET: ${{ secrets.SITE_BUCKET }}
-
       - name: Deploy site (never touch findings.json)
         run: aws s3 sync site/ s3://${{ secrets.SITE_BUCKET }}/ --delete --exclude "findings.json" --region us-east-1
 
