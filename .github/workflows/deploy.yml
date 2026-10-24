@@ -18,21 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug OIDC Token Claims
-        run: |
-          # 1. Fetch raw token with sts.amazonaws.com as audience
-          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
-
-          # 2. Extract and decode the middle part (the payload)
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-          # Add base64 padding if needed
-          REMAINDER=$(( ${#PAYLOAD} % 4 ))
-          if [ $REMAINDER -eq 2 ]; then PAYLOAD="${PAYLOAD}=="; elif [ $REMAINDER -eq 3 ]; then PAYLOAD="${PAYLOAD}="; fi
-
-          echo "=== DECODED OIDC CLAIMS ==="
-          echo "$PAYLOAD" | base64 -d | jq .
-          echo "==========================="
-
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,8 +33,15 @@ jobs:
             --output json | tee validation.json
           test "$(cat validation.json)" = "[]"
 
+      - name: Debug Bucket Secret
+        run: |
+          echo "Bucket length: ${#BUCKET}"
+          echo "Value wrapped in quotes: '${BUCKET}'"
+        env:
+          BUCKET: ${{ secrets.SITE_BUCKET }}
+
       - name: Deploy site (never touch findings.json)
-        run: aws s3 sync site/ s3://${{ secrets.SITE_BUCKET }}/ --delete --exclude "findings.json"
+        run: aws s3 sync site/ s3://${{ secrets.SITE_BUCKET }}/ --delete --exclude "findings.json" --region us-east-1
 
       - name: Invalidate CDN cache
         run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} --paths "/index.html"
