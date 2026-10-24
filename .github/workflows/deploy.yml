@@ -1,0 +1,34 @@
+name: validate-and-deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  id-token: write # lets GitHub request an OIDC token
+  contents: read
+env:
+  AWS_REGION: us-east-1
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Policy-as-code gate (IAM Access Analyzer validation)
+        run: |
+          aws accessanalyzer validate-policy \
+            --policy-type IDENTITY_POLICY \
+            --policy-document file://iam/scanner-policy.json \
+            --query 'findings[?findingType==`ERROR` || findingType==`SECURITY_WARNING`]' \
+            --output json | tee validation.json
+          test "$(cat validation.json)" = "[]"
+
+      - name: Deploy site (never touch findings.json)
+        run: aws s3 sync site/ s3://${{ secrets.SITE_BUCKET }}/ --delete --exclude "findings.json"
+
+      - name: Invalidate CDN cache
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} --paths "/index.html"
