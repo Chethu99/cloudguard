@@ -1,19 +1,25 @@
 name: validate-and-deploy
+
 on:
   push:
-    branches: [main]
+    branches: [main, master]
+
 permissions:
-  id-token: write # lets GitHub request an OIDC token
+  id-token: write
   contents: read
+
 env:
   AWS_REGION: us-east-1
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
