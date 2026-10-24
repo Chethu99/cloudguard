@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-10-24T09:00:00+00:00",
+  "account": "****1234",
+  "score": 76,
+  "summary": {"CRITICAL": 0, "HIGH": 2, "MEDIUM": 2, "LOW": 0},
+  "checks_run": 9,
+  "findings": [
+    {"check": "SG_OPEN", "title": "Security group exposes SSH/RDP to the internet", "severity": "HIGH", "resource": "sg-...0abc", "region": "us-east-1", "remediation": "Restrict the source to a trusted IP range or use Session Manager instead of open SSH.", "controls": {"cis": "5.2", "soc2": "CC6.6", "iso27001": "A.8.20", "pci": "1.3"}},
+    {"check": "USER_MFA", "title": "IAM user with console access has no MFA", "severity": "HIGH", "resource": "sample-user", "region": "global", "remediation": "Assign an MFA device or remove console access.", "controls": {"cis": "1.10", "soc2": "CC6.1", "iso27001": "A.8.5", "pci": "8.4"}},
+    {"check": "PWD_POLICY", "title": "No custom IAM password policy set", "severity": "MEDIUM", "resource": "account", "region": "global", "remediation": "Set a password policy with a minimum length of 14.", "controls": {"cis": "1.8", "soc2": "CC6.1", "iso27001": "A.5.17", "pci": "8.3"}},
+    {"check": "TRAIL", "title": "No multi-region CloudTrail trail", "severity": "MEDIUM", "resource": "account", "region": "us-east-1", "remediation": "Create a multi-region trail that logs management events.", "controls": {"cis": "3.1", "soc2": "CC7.2", "iso27001": "A.8.15", "pci": "10.2"}}
+  ]
+}

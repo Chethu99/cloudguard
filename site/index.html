@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CloudGuard | AWS Security Posture</title>
+<style>
+:root{--bg:#0b1220;--card:#121b2d;--text:#e8eef9;--muted:#93a4c0;--line:#22314d;
+--critical:#ff5d5d;--high:#ff9f43;--medium:#f2d14b;--low:#4cc9f0;--good:#3ddc97}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:26px;margin:0}
+.sub{color:var(--muted);margin:4px 0 20px}
+.grid{display:grid;grid-template-columns:200px 1fr;gap:16px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.score{font-size:64px;font-weight:700;line-height:1}
+.score small{font-size:18px;color:var(--muted);font-weight:400}
+.counts{display:flex;flex-wrap:wrap;gap:10px}
+.count{flex:1 1 90px;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+.count b{display:block;font-size:24px;color:var(--c)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 10px;align-items:center}
+button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit}
+button.active{border-color:var(--low);color:var(--low)}
+.spacer{flex:1}
+.finding{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.finding h3{margin:0 0 4px;font-size:16px}
+.finding p{margin:6px 0 0}
+.meta{color:var(--muted);font-size:13px}
+.chips{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}
+.badge{font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:6px;color:#0b1220;margin-right:8px;background:var(--c)}
+.CRITICAL{--c:var(--critical)}.HIGH{--c:var(--high)}.MEDIUM{--c:var(--medium)}.LOW{--c:var(--low)}
+footer{color:var(--muted);font-size:13px;margin-top:28px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CloudGuard</h1>
+  <p class="sub">Automated AWS security-posture checks mapped to CIS, SOC 2, ISO 27001 and PCI-DSS &middot; <span id="meta">loading...</span></p>
+  <div class="grid">
+    <div class="card"><div class="meta">Security score</div><div class="score" id="score">-</div></div>
+    <div class="card"><div class="meta" style="margin-bottom:8px">Open findings by severity</div><div class="counts" id="counts"></div></div>
+  </div>
+  <div class="toolbar" id="toolbar"></div>
+  <div id="list"></div>
+  <p id="err" class="meta"></p>
+  <footer>Serverless build: S3 + CloudFront + Lambda + EventBridge Scheduler. Identifiers are masked. Scanner runs on a schedule with a read-only, least-privilege IAM role.</footer>
+</div>
+<script>
+(function () {
+  var SEV = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+  var data = null;
+  var filter = 'ALL';
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function scoreColor(s) {
+    return s >= 90 ? 'var(--good)' : s >= 70 ? 'var(--medium)' : s >= 50 ? 'var(--high)' : 'var(--critical)';
+  }
+
+  function load() {
+    fetch('findings.json', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { data = d; render(); })
+      .catch(function (e) { document.getElementById('err').textContent = 'Could not load findings.json (' + e.message + ')'; });
+  }
+
+  function render() {
+    var s = document.getElementById('score');
+    s.textContent = String(data.score);
+    s.style.color = scoreColor(data.score);
+    s.appendChild(el('small', null, ' / 100'));
+    document.getElementById('meta').textContent =
+      'Account ' + data.account + ' \u00b7 last scan ' + new Date(data.generated_at).toLocaleString();
+
+    var counts = document.getElementById('counts');
+    counts.textContent = '';
+    SEV.forEach(function (k) {
+      var c = el('div', 'count ' + k);
+      c.appendChild(el('b', null, String((data.summary || {})[k] || 0)));
+      c.appendChild(el('span', 'meta', k));
+      counts.appendChild(c);
+    });
+    drawToolbar();
+    drawList();
+  }
+
+  function drawToolbar() {
+    var tb = document.getElementById('toolbar');
+    tb.textContent = '';
+    ['ALL'].concat(SEV).forEach(function (k) {
+      var b = el('button', k === filter ? 'active' : '', k);
+      b.addEventListener('click', function () { filter = k; drawToolbar(); drawList(); });
+      tb.appendChild(b);
+    });
+    tb.appendChild(el('span', 'spacer'));
+    var ex = el('button', '', 'Download evidence (CSV)');
+    ex.addEventListener('click', exportCsv);
+    tb.appendChild(ex);
+  }
+
+  function drawList() {
+    var list = document.getElementById('list');
+    list.textContent = '';
+    var items = (data.findings || []).filter(function (f) { return filter === 'ALL' || f.severity === filter; });
+    if (!items.length) { list.appendChild(el('div', 'card', 'No open findings in this view.')); return; }
+    items.forEach(function (f) {
+      var box = el('div', 'finding ' + f.severity);
+      var h = el('h3');
+      h.appendChild(el('span', 'badge', f.severity));
+      h.appendChild(document.createTextNode(f.title));
+      box.appendChild(h);
+      box.appendChild(el('div', 'meta', f.resource + ' \u00b7 ' + f.region));
+      box.appendChild(el('p', null, 'Fix: ' + f.remediation));
+      var chips = el('div', 'chips');
+      var c = f.controls || {};
+      [['CIS', c.cis], ['SOC 2', c.soc2], ['ISO 27001', c.iso27001], ['PCI-DSS', c.pci]].forEach(function (p) {
+        if (p[1]) chips.appendChild(el('span', 'chip', p[0] + ' ' + p[1]));
+      });
+      box.appendChild(chips);
+      list.appendChild(box);
+    });
+  }
+
+  function csvCell(v) {
+    v = String(v === undefined ? '' : v);
+    if (/^[=+\-@]/.test(v)) v = "'" + v;      // block spreadsheet formula injection
+    return '"' + v.replace(/"/g, '""') + '"';
+  }
+  function exportCsv() {
+    var rows = [['severity', 'title', 'resource', 'region', 'cis', 'soc2', 'iso27001', 'pci_dss', 'remediation', 'scan_time']];
+    (data.findings || []).forEach(function (f) {
+      var c = f.controls || {};
+      rows.push([f.severity, f.title, f.resource, f.region, c.cis, c.soc2, c.iso27001, c.pci, f.remediation, data.generated_at]);
+    });
+    var csv = rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
+    var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'cloudguard-evidence.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>
